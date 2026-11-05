@@ -4,9 +4,9 @@ Carte Lovelace pour piloter un lampadaire Govee Uplighter (H60B0 « Wave Lamp »
 
 - allumage et luminosité générale ;
 - les trois zones Ondulante, Latérale et Inférieure, deux au plus à la fois comme sur la lampe ;
-- **Ondulante** : couleurs de base, couleur libre, température de blanc ;
-- **Latérale** : anneau de 8 segments, sélection segment par segment (« Tout sélectionner », « Inverser la sélection ») puis couleur ;
-- **Inférieure** : température de blanc ;
+- **Ondulante** : couleurs de base, couleur libre, blanc, luminosité, débit des ondulations ;
+- **Latérale** : anneau de 8 segments, sélection segment par segment (« Tout sélectionner », « Inverser la sélection ») puis couleur ou blanc, luminosité ;
+- **Inférieure** : blanc et luminosité, indépendants du plafond ;
 - **Scènes** : les scènes Govee avec recherche, et vos instantanés ;
 - **Musique** : réaction au son, 8 effets, sensibilité.
 
@@ -14,27 +14,28 @@ Carte Lovelace pour piloter un lampadaire Govee Uplighter (H60B0 « Wave Lamp »
 
 ## Prérequis
 
-L'intégration [lasswellt/govee-homeassistant](https://github.com/lasswellt/govee-homeassistant) avec une clé API Govee. La carte utilise ses entités `light.<lampe>`, `switch.<lampe>_{ripple,side,bottom}_light`, `select.<lampe>_scene`, `select.<lampe>_snapshot`, `switch.<lampe>_music_mode`, `select.<lampe>_music_mode`, `number.<lampe>_music_sensitivity` et l'action `govee.set_segment_color`.
+- [ha-govee-uplighter](https://github.com/Louis-hue-lang/ha-govee-uplighter) : commande locale zone par zone (blancs et couleurs séparés, anneau, débit). Obligatoire.
+- [lasswellt/govee-homeassistant](https://github.com/lasswellt/govee-homeassistant) : scènes et musique, par le cloud Govee. Facultatif : sans lui, pas d'onglets Scènes et Musique.
 
 ## Installation
 
-HACS → menu ⋮ → Dépôts personnalisés → ce dépôt, catégorie « Dashboard », puis Télécharger. HACS ajoute la ressource `/hacsfiles/ha-govee-lamp-card/govee-lamp-card.js`.
+Marketplace / HACS → dépôts personnalisés → ce dépôt, catégorie « Dashboard », puis Télécharger.
 
 ## Configuration
 
 ```yaml
 type: custom:govee-lamp-card
-entity: light.salon_wave_lamp
-title: Lampadaire        # facultatif, nom de l'entité par défaut
+local: light.lampadaire          # lumière principale de Govee Uplighter (local)
+entity: light.salon_wave_lamp    # facultatif : lumière de l'intégration Govee cloud (scènes, musique)
+title: Lampadaire                # facultatif
 ```
 
 ## Ce que la lampe fait vraiment (constaté sur le H60B0)
 
-- Une couleur colore l'ondulation **et** l'anneau latéral ; la lampe du bas reste blanche.
-- Un blanc (température) s'applique à l'ondulation et au bas.
-- Les segments ne colorent que l'anneau latéral : choisir la couleur de l'ondulation d'abord, puis celle de l'anneau.
-- Le débit des ondulations n'existe pas dans l'API Govee : il reste réglable seulement dans l'app.
+- Par le cloud Govee, un blanc s'applique au plafond **et** au bas, et une couleur recolore aussi l'anneau : d'où la commande locale, zone par zone.
+- Deux zones au plus ; la lampe du bas n'a que du blanc.
+- Une teinte mélangée (orangé pâle…) se décompose en arc-en-ciel au plafond : pour un plafond chaud, utiliser le blanc.
 
 ## Limite
 
-Govee ne renvoie ni l'état des zones ni la couleur des segments à une clé API seule : la carte affiche la dernière commande envoyée depuis Home Assistant. Après un réglage fait dans l'app Govee, refaire le réglage voulu depuis la carte pour qu'elle soit de nouveau à jour. Les couleurs de l'anneau sont mémorisées par navigateur.
+La lampe ne renvoie pas l'état de ses zones : la carte affiche le dernier réglage envoyé depuis Home Assistant. Après un réglage fait dans l'app Govee ou une scène, refaire le réglage voulu depuis la carte pour la recaler.
