@@ -14,7 +14,7 @@
  * La lampe ne renvoie pas l'état de ses zones : la carte montre le dernier réglage envoyé.
  * JavaScript sans ?. ni ?? ni champs de classe, pour la WebView de l'Echo Show.
  */
-const VERSION = "2.0.0";
+const VERSION = "2.1.0";
 const SEGMENTS = 8;
 const ZONES = [
   { key: "ripple", suffix: "_ondulante", label: "Ondulante", icon: "M2,11C4,9 6,9 8,11C10,13 12,13 14,11C16,9 18,9 20,11L22,13V15L20,13C18,11 16,11 14,13C12,15 10,15 8,13C6,11 4,11 2,13V11M2,5C4,3 6,3 8,5C10,7 12,7 14,5C16,3 18,3 20,5L22,7V9L20,7C18,5 16,5 14,7C12,9 10,9 8,7C6,5 4,5 2,7V5M2,17C4,15 6,15 8,17C10,19 12,19 14,17C16,15 18,15 20,17L22,19V21L20,19C18,17 16,17 14,19C12,21 10,21 8,19C6,17 4,17 2,19V17Z" },
@@ -26,6 +26,18 @@ const COLORS = [
   [0, 64, 255], [0, 230, 230], [150, 0, 255], [255, 255, 255],
 ];
 const KELVIN_MIN = 2700, KELVIN_MAX = 6500;
+// Ambiances en un appui (remplaçables par `presets:` dans la configuration de la carte).
+// Par zone : false = éteinte, sinon { kelvin | rgb, brightness (%) } ; deux zones allumées au plus.
+// Pas de teinte mélangée au plafond : un orangé pâle s'y décompose en arc-en-ciel.
+const DEFAULT_PRESETS = [
+  { name: "Lecture", icon: "mdi:book-open-variant", ripple: false, side: false, lower: { kelvin: 4000, brightness: 100 } },
+  { name: "Chaleureux", icon: "mdi:fireplace", ripple: { kelvin: 2700, brightness: 70 }, side: false, lower: { kelvin: 2700, brightness: 50 }, flow: 5 },
+  { name: "Soirée", icon: "mdi:glass-wine", ripple: { kelvin: 2700, brightness: 40 }, side: { rgb: [255, 110, 20], brightness: 40 }, lower: false, flow: 1 },
+  { name: "Cinéma", icon: "mdi:movie-open", ripple: false, side: { rgb: [40, 60, 255], brightness: 15 }, lower: false },
+  { name: "Océan", icon: "mdi:waves", ripple: { rgb: [0, 90, 255], brightness: 80 }, side: { rgb: [0, 200, 220], brightness: 60 }, lower: false, flow: 35 },
+  { name: "Aurore", icon: "mdi:weather-night", ripple: { rgb: [0, 220, 120], brightness: 70 }, side: { rgb: [150, 0, 255], brightness: 50 }, lower: false, flow: 20 },
+  { name: "Plein jour", icon: "mdi:white-balance-sunny", ripple: { kelvin: 6500, brightness: 100 }, side: false, lower: { kelvin: 6500, brightness: 100 }, flow: 10 },
+];
 const MUSIC_LABELS = {
   "DIY": "DIY", "Stippling": "Pointillé", "Hopping": "Sautillant", "Flowing Light": "Lumière fluide",
   "Luminous": "Lumineux", "Sprouting": "Bourgeonnant", "Rhythm": "Rythme", "Shiny": "Scintillant",
@@ -109,6 +121,7 @@ class GoveeLampCard extends HTMLElement {
       // Intégration cloud, facultative : scènes et musique
       cprefix: config.entity && config.entity.indexOf("light.") === 0 ? config.entity.slice(6) : null,
       title: config.title != null ? config.title : null,
+      presets: Array.isArray(config.presets) ? config.presets : DEFAULT_PRESETS,
     };
     this._key = null;
     if (this._hass) this._render();
@@ -187,6 +200,24 @@ class GoveeLampCard extends HTMLElement {
     this._call("light", this._on(id) ? "turn_off" : "turn_on", { entity_id: id });
   }
 
+  // Zones éteintes d'abord (place pour les autres), puis allumées : l'intégration regroupe
+  // les commandes reçues en 150 ms et les envoie à la lampe en un seul message.
+  _applyPreset(p) {
+    const offs = ZONES.filter((z) => p[z.key] === false).map((z) => this._zoneId(z.key));
+    const ons = ZONES.filter((z) => p[z.key] && typeof p[z.key] === "object");
+    let chain = offs.length ? this._call("light", "turn_off", { entity_id: offs }) : Promise.resolve();
+    ons.forEach((z) => {
+      const s = p[z.key], data = { entity_id: this._zoneId(z.key) };
+      if (s.rgb && z.key !== "lower") data.rgb_color = s.rgb;
+      else if (s.kelvin) data.color_temp_kelvin = s.kelvin;
+      if (s.brightness) data.brightness_pct = s.brightness;
+      chain = chain.then(() => this._call("light", "turn_on", data));
+    });
+    if (p.flow != null) chain = chain.then(() => this._call("number", "set_value", { entity_id: this._flowId(), value: p.flow }));
+    this._lastPreset = p.name;
+    this._render();
+  }
+
   _selectedSegments() {
     const out = [];
     this._selected.forEach((sel, i) => { if (sel) out.push(i + 1); });
@@ -224,6 +255,7 @@ class GoveeLampCard extends HTMLElement {
     else if (a === "power") {
       this._call("light", this._on(this._config.local) ? "turn_off" : "turn_on", { entity_id: this._config.local });
     }
+    else if (a === "preset") this._applyPreset(this._config.presets[Number(v)]);
     else if (a === "color") this._setColor(JSON.parse(v));
     else if (a === "segment") { const i = Number(v); this._selected[i] = !this._selected[i]; this._render(); }
     else if (a === "select-all") { this._selected = this._selected.map(() => true); this._render(); }
@@ -293,6 +325,9 @@ class GoveeLampCard extends HTMLElement {
         '<div role="button" class="power' + (on ? " on" : "") + '" data-action="power" title="Allumer / éteindre">' + svgIcon(ICONS.power) + "</div>" +
       "</div>" +
       this._slider("brightness", 1, 100, bri, " %", svgIcon(ICONS.sun), "Luminosité générale", "bright") +
+      (this._config.presets.length ? '<div class="presets">' + this._config.presets.map((p, i) =>
+        '<div role="button" class="preset' + (p.name === this._lastPreset ? " current" : "") + '" data-action="preset" data-value="' + i + '">' +
+        (p.icon ? '<ha-icon icon="' + esc(p.icon) + '"></ha-icon>' : "") + "<span>" + esc(p.name) + "</span></div>").join("") + "</div>" : "") +
       '<div class="zones">' + ZONES.map((z) => this._zoneTile(z)).join("") + "</div>" +
       (this._message ? '<div class="toast">' + esc(this._message) + "</div>" : "") +
       (cloud ? '<div class="tabs">' + this._tabBtn("zones", "Réglages") + this._tabBtn("scenes", "Scènes") +
@@ -430,6 +465,11 @@ const STYLE = `
     background: linear-gradient(90deg, #ff9a2e, #ffe2b8 45%, #ffffff 60%, #cfe0ff); }
   .kelvin input::-webkit-slider-thumb { -webkit-appearance: none; width: 30px; height: 30px; border-radius: 50%;
     background: #fff; border: 3px solid var(--primary-color, #03a9f4); box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+  .presets { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .preset { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 78px; padding: 10px 8px;
+    border-radius: 14px; font-size: 13px; background: var(--secondary-background-color, rgba(127,127,127,.12)); border: 2px solid transparent; }
+  .preset ha-icon { --mdc-icon-size: 26px; color: var(--primary-color, #03a9f4); }
+  .preset.current { border-color: var(--primary-color, #03a9f4); }
   .zones { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
   .zone { border-radius: 14px; padding: 12px 8px; display: flex; flex-direction: column; align-items: center; gap: 10px;
     background: var(--secondary-background-color, rgba(127,127,127,.12)); border: 2px solid transparent; }

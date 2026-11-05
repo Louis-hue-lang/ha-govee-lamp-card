@@ -3,6 +3,7 @@
 Carte Lovelace pour piloter un lampadaire Govee Uplighter (H60B0 « Wave Lamp ») depuis Home Assistant, avec le même découpage que l'app Govee Home :
 
 - allumage et luminosité générale ;
+- **ambiances** en un appui : Lecture, Chaleureux, Soirée, Cinéma, Océan, Aurore, Plein jour (remplaçables) ;
 - les trois zones Ondulante, Latérale et Inférieure, deux au plus à la fois comme sur la lampe ;
 - **Ondulante** : couleurs de base, couleur libre, blanc, luminosité, débit des ondulations ;
 - **Latérale** : anneau de 8 segments, sélection segment par segment (« Tout sélectionner », « Inverser la sélection ») puis couleur ou blanc, luminosité ;
@@ -28,7 +29,21 @@ type: custom:govee-lamp-card
 local: light.lampadaire          # lumière principale de Govee Uplighter (local)
 entity: light.salon_wave_lamp    # facultatif : lumière de l'intégration Govee cloud (scènes, musique)
 title: Lampadaire                # facultatif
+presets:                         # facultatif : remplace les ambiances par défaut ([] pour aucune)
+  - name: Lecture
+    icon: mdi:book-open-variant
+    ripple: false                # false = zone éteinte
+    side: false
+    lower: { kelvin: 4000, brightness: 100 }
+  - name: Soirée
+    icon: mdi:glass-wine
+    ripple: { kelvin: 2700, brightness: 40 }
+    side: { rgb: [255, 110, 20], brightness: 40 }
+    lower: false
+    flow: 1                      # débit des ondulations, 0 à 100
 ```
+
+Deux zones allumées au plus par ambiance ; la lampe du bas n'accepte que `kelvin`.
 
 ## Ce que la lampe fait vraiment (constaté sur le H60B0)
 
